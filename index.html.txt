@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lucky Draw Spinner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .wheel-container {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            border: 12px solid #1f2937;
+            overflow: hidden;
+            transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
+        }
+        .prize-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            padding-top: 30px;
+            color: white;
+            font-weight: 700;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            pointer-events: none;
+            transform-origin: center;
+        }
+        .prize-text { width: 80px; text-align: center; line-height: 1.1; font-size: 0.9rem; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="mb-6 flex gap-2 w-full max-w-sm">
+        <input id="themeInput" type="text" placeholder="Enter a prize theme" class="flex-grow p-2 rounded-lg border">
+        <button id="generateBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700">✨ Generate</button>
+    </div>
+
+    <div class="relative flex flex-col items-center">
+        <div class="absolute -top-6 z-10 w-0 h-0 border-l-[16px] border-l-transparent border-r-[16px] border-r-transparent border-t-[24px] border-t-blue-600 shadow-lg"></div>
+        
+        <div id="wheel" class="wheel-container shadow-2xl"></div>
+        <button id="spinBtn" class="mt-10 bg-gray-900 text-white py-3 px-10 rounded-full font-bold text-xl hover:bg-gray-700 transition active:scale-95 disabled:opacity-50">SPIN!</button>
+    </div>
+
+    <div id="modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl p-8 max-w-sm w-full text-center shadow-2xl">
+            <h2 class="text-2xl font-bold mb-4">Congratulations!</h2>
+            <p id="winningMessage" class="text-lg text-gray-700 mb-6 italic"></p>
+            <button onclick="closeModal()" class="bg-blue-600 text-white py-3 px-8 rounded-lg font-semibold hover:bg-blue-700">Close</button>
+        </div>
+    </div>
+
+    <script>
+        const apiKey = "";
+        const wheel = document.getElementById('wheel');
+        const spinBtn = document.getElementById('spinBtn');
+        const modal = document.getElementById('modal');
+        const winningMessage = document.getElementById('winningMessage');
+        const themeInput = document.getElementById('themeInput');
+        const generateBtn = document.getElementById('generateBtn');
+
+        let prizes = ["Prize 1", "Prize 2", "Prize 3", "Prize 4", "Prize 5", "Prize 6"];
+        const colors = ["#3b82f6", "#eab308", "#22c55e", "#a855f7", "#ef4444", "#06b6d4"];
+        let currentRotation = 0;
+
+        async function fetchGemini(prompt) {
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                const data = await response.json();
+                return data.candidates[0].content.parts[0].text;
+            } catch (e) { return null; }
+        }
+
+        generateBtn.addEventListener('click', async () => {
+            const theme = themeInput.value;
+            if (!theme) return;
+            generateBtn.innerText = "Generating...";
+            const response = await fetchGemini(`Provide 6 short prize ideas for a '${theme}' themed lucky draw. Return them as a comma-separated list only.`);
+            if (response) {
+                prizes = response.split(',').map(p => p.trim());
+                initWheel();
+            }
+            generateBtn.innerText = "✨ Generate";
+        });
+
+        function initWheel() {
+            const sliceAngle = 360 / prizes.length;
+            const stops = prizes.map((_, i) => `${colors[i % colors.length]} ${i * sliceAngle}deg ${(i + 1) * sliceAngle}deg`).join(', ');
+            wheel.style.background = `conic-gradient(${stops})`;
+            wheel.innerHTML = '';
+            prizes.forEach((prize, i) => {
+                const div = document.createElement('div');
+                div.className = 'prize-container';
+                div.style.transform = `rotate(${i * sliceAngle + (sliceAngle / 2)}deg)`;
+                div.innerHTML = `<div class="prize-text">${prize}</div>`;
+                wheel.appendChild(div);
+            });
+        }
+
+        spinBtn.addEventListener('click', () => {
+            spinBtn.disabled = true;
+            const sliceAngle = 360 / prizes.length;
+            currentRotation += Math.floor(Math.random() * 360) + 1440;
+            wheel.style.transform = `rotate(${currentRotation}deg)`;
+            setTimeout(async () => {
+                const normalizedRotation = (currentRotation % 360);
+                const index = Math.floor((360 - ((normalizedRotation - (sliceAngle / 2) + 360) % 360)) % 360 / sliceAngle);
+                const prize = prizes[index];
+                winningMessage.innerText = "Generating message...";
+                modal.classList.remove('hidden');
+                const msg = await fetchGemini(`Write a short, enthusiastic congratulatory message for winning '${prize}'.`);
+                winningMessage.innerText = msg || `You won: ${prize}!`;
+                spinBtn.disabled = false;
+            }, 4000);
+        });
+
+        function closeModal() { modal.classList.add('hidden'); }
+        initWheel();
+    </script>
+</body>
+</html>
